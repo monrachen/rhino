@@ -291,6 +291,13 @@ public final class NativeJSON extends IdScriptableObject
         } else if (value instanceof NativeBoolean) {
             value = ((NativeBoolean) value).getDefaultValue(ScriptRuntime.BooleanClass);
         }
+        
+        if (value instanceof NativeJavaObject) {
+        	Object valueT = ((NativeJavaObject) value).unwrap();
+			if (valueT instanceof String) {
+				value = valueT;
+			}
+		}
 
         if (value == null) return "null";
         if (value.equals(Boolean.TRUE)) return "true";

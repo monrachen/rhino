@@ -8,6 +8,8 @@ package org.mozilla.javascript;
 
 import java.io.Serializable;
 import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.text.MessageFormat;
 import java.util.Arrays;
 import java.util.Locale;
@@ -1601,6 +1603,14 @@ public class ScriptRuntime {
             }
             result = Undefined.instance;
         }
+        
+        if (obj instanceof NativeJavaMap) {
+			if (result instanceof NativeJavaObject) {
+				if (((NativeJavaObject) result).unwrap() instanceof String) {
+					result = Context.toString(((NativeJavaObject) result).unwrap());
+				}
+			}
+		}
 
         return result;
     }
@@ -1993,6 +2003,33 @@ public class ScriptRuntime {
                                       getTopLevelScope(parentScope);
                     }
                     break;
+                } else {
+                	Object resultT = topScopeName(cx, ScriptableObject.getTopLevelScope(parentScope), name);
+                	if (resultT != Scriptable.NOT_FOUND && resultT.getClass().isSynthetic()) {
+                    	final Method methodF = resultT.getClass().getMethods()[0];
+                    	final Object resultF = resultT;
+                    	result = new Callable() {
+        					
+        					@Override
+        					public Object call(Context cx, Scriptable scope, Scriptable thisObj, Object[] args) {
+        						try {
+        							if (!methodF.isAccessible()) {
+        								methodF.setAccessible(true);
+        							}
+        							Object[] argsF = Arrays.copyOf(args, args.length);
+        							for (int i = 0; i < argsF.length; i++) {
+        								if (argsF[i] instanceof NativeJavaObject) {
+        									argsF[i] = ((NativeJavaObject) argsF[i]).unwrap();
+        								}
+        							}
+        							return methodF.invoke(resultF, argsF);
+        						} catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
+        							throw new RuntimeException(e);
+        						}
+        					}
+        				};
+        				break;
+                    }
                 }
             } else {
                 // Can happen if Rhino embedding decided that nested
@@ -2457,6 +2494,30 @@ public class ScriptRuntime {
         Scriptable parent = scope.getParentScope();
         if (parent == null) {
             Object result = topScopeName(cx, scope, name);
+            if (result.getClass().isSynthetic()) {
+            	final Method methodF = result.getClass().getMethods()[0];
+            	final Object resultF = result;
+            	result = new Callable() {
+					
+					@Override
+					public Object call(Context cx, Scriptable scope, Scriptable thisObj, Object[] args) {
+						try {
+							if (!methodF.isAccessible()) {
+								methodF.setAccessible(true);
+							}
+							Object[] argsF = Arrays.copyOf(args, args.length);
+							for (int i = 0; i < argsF.length; i++) {
+								if (argsF[i] instanceof NativeJavaObject) {
+									argsF[i] = ((NativeJavaObject) argsF[i]).unwrap();
+								}
+							}
+							return methodF.invoke(resultF, argsF);
+						} catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
+							throw new RuntimeException(e);
+						}
+					}
+				};
+            }
             if (!(result instanceof Callable)) {
                 if (result == Scriptable.NOT_FOUND) {
                     throw notFoundError(scope, name);
