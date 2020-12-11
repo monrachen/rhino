@@ -4,9 +4,16 @@
 
 package org.mozilla.javascript.engine;
 
+import org.mozilla.javascript.Callable;
 import org.mozilla.javascript.Context;
+import org.mozilla.javascript.NativeJavaObject;
 import org.mozilla.javascript.Scriptable;
 import org.mozilla.javascript.ScriptableObject;
+
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.util.Arrays;
+
 import javax.script.Bindings;
 
 /**
@@ -34,7 +41,32 @@ public class BindingsObject
     if (!bindings.containsKey(name)) {
       return Scriptable.NOT_FOUND;
     }
-    return Context.jsToJava(bindings.get(name), Object.class);
+    Object value = bindings.get(name);
+    if (value == null || !value.getClass().isSynthetic()) {
+        return Context.jsToJava(value, Object.class);
+    }
+    final Method methodF = value.getClass().getDeclaredMethods()[0];
+    final Object ObjF = value;
+    return new Callable() {
+        
+        @Override
+        public Object call(Context cx, Scriptable scope, Scriptable thisObj, Object[] args) {
+            if (!methodF.isAccessible()) {
+                methodF.setAccessible(true);
+            }
+            Object[] argsF = Arrays.copyOf(args, args.length);
+            for (int i = 0; i < argsF.length; i++) {
+                if (argsF[i] instanceof NativeJavaObject) {
+                    argsF[i] = ((NativeJavaObject) argsF[i]).unwrap();
+                }
+            }
+            try {
+                return methodF.invoke(ObjF, argsF);
+            } catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
+                throw Context.throwAsScriptRuntimeEx(e);
+            }
+        }
+    };
   }
 
   @Override
